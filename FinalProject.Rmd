@@ -9,13 +9,86 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Data Cleaning
 
-```{r}
-wine <- read.csv("winemag-data-130k-v2.csv", stringsAsFactors = FALSE)
-head(wine)
+This dataset was downloaded from https://www.kaggle.com/zynicide/wine-reviews on 11/28/2017. It was scraped from WineEnthusiast on November 22nd, 2017
+
+### Identifying the Vintage Year
+
+```{r, warning=FALSE}
+
+##Load packages
+library(stringr)
+library(dplyr)
 
 
+##Read in the dataset
+wine <- read.csv("winemag-data-130k-v2.csv")
+
+##Identify the wine vintage from the wine title
+pattern <- "\\d\\d\\d\\d" #for the 4 digits that represent year
+x <- str_detect(wine$title, pattern) #just for my own practice so I could look at x and find out how much missing data there were 
+length(wine$X) - sum(x) #4609 wines lack year
+#if you look in the environment window under this dataset, it shows title as a factor with 118840 levels -- I am not sure where that number 118840 comes from, as each of these should be unique, right?
+
+wine$year <- str_extract(wine$title, pattern) ##Amanda note: by adding the "wine$.." in front it joins the year column to the wine dataset, saving you the work you had below of left joining
+
+##look at the fields for wines that are missing year to make sure there isn't other 
+##information we could use
+missing <- wine %>% filter(str_detect(title, pattern)!=1)
+head(missing, n=100)
+####I didn't notice any years here, but I did notice they were mostly 
+####sparkling/champange wines that were missing year, which we will probably want to ####exclude anyway
+
+##Are there any values that seem unusual?
+wine %>% filter(year<1990 | year>2017)
+####From the titles I noticed that sometimes they sometimes have other numbers which 
+####seem to often be the year the winery opened or sometmes are just part of the name 
+####of the wine
+
+table(wine$year)
+
+##It seems like only years from 1985(ish)-2017 are actually vintage years. Here's a ##second try at identifying the year based on this insight.
+validyears <- as.character(seq(1985, 2017, by=1))
+wine$year <- str_extract(wine$title, paste(validyears, collapse="|"))
+table(wine$year)
+wine %>% filter(is.na(wine$year))
+###There are 4,662 missing vintage
+
+table(wine$country)
 
 ```
 
+### Identifying the Region
 
+We will need to know the region in terms of longitude and latitude in order to map this information and link to external data sources with weather information. The geonames package seems to be the best free datasource out there with this type of information.
+
+```{r}
+
+##Load packages 
+if(!require(countrycode)){
+    install.packages("countrycode")
+    library(countrycode)
+}
+
+
+if(!require(geonames)){
+    install.packages("geonames")
+    library(geonames)
+}
+
+##Set options for the geonames package
+###Set username (I created a profile on the website http://www.geonames.org/)
+options(geonamesUsername="bi0260finalproject")
+###Set api
+options(geonamesHost="api.geonames.org")
+###check that connection is working (some samples should pop up)
+source(system.file("tests","testing.R",package="geonames"),echo=TRUE)
+
+
+##Add a column with the three character country code (or some other country ID, we just need a standardized way to be able to match the countries in this wine dataset to other data sources)
+wine$countryiso3c <- countrycode(ifelse(wine$country=="England", "United Kingdom", as.character(wine$country)), 'country.name', 'iso3c') 
+
+##Use the geonames package to match the "province" variable to something meaningful like coordinates (perhaps using the wikipedia search function in geonames)
+
+
+```
 
