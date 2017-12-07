@@ -19,7 +19,6 @@ This dataset was downloaded from https://www.kaggle.com/zynicide/wine-reviews on
 library(stringr)
 library(dplyr)
 
-
 ##Read in the dataset
 wine <- read.csv("winemag-data-130k-v2.csv")
 
@@ -54,6 +53,39 @@ wine %>% filter(is.na(wine$year))
 ###There are 4,662 missing vintage
 
 table(wine$country)
+
+```
+
+#Beth's lowly contribution! - I totally need to edit this but took a break to do other work.
+```{r}
+install.packages("rnoaa")
+library(rnoaa)
+station_data <- ghcnd_stations()
+
+#northern hemisphere: aug-oct harvest season, southern hemisphere: feb-april harvest season
+#website source:  http://winefolly.com/tutorial/start-planning-now-wine-harvest-season/
+
+minmonth <- ifelse(lat>0,"08","02")
+min <- as.Date(paste(wines$year, minmonth, "01", sep="-"), "%Y-%m-%d")
+
+maxmonth <- ifelse(lat>0,"10","04")
+maxday <- ifelse(lat>0, "31", "30")
+max <- as.Date(paste(wines$year, maxmonth, maxday ,sep="-"), "%Y-%m-%d")
+
+#still needs edits -- will return to this Th 12/7 after my 201 lab ends at 7:15
+weather <- function(lat, long, min, max){
+  df <- data.frame(id=wines$region, latitude=wines$latitude, longitude=wines$longitude)
+  nearby_station <- meteo_nearby_stations(lat_lon_df = lat_lon_df, station_data = station_data, limit=1)
+  meteo_tidy_ghcnd(nearby_station$stationid, keep_flags = FALSE, var = c(PRCP,TAVG), date_min = min, date_max = max) %>%
+  summarize(avgtemp = mean(TAVG), totrain = sum(PRCP))
+}
+
+#trying it out for two places
+lat_lon_df <- data.frame(id = c("lakeMichigan","douroRiver"),latitude = c(43.45,41.51), longitude = c(-87.22,-5.49))
+nearby_stations <- meteo_nearby_stations(lat_lon_df = lat_lon_df, station_data = station_data, limit=1)
+View(nearby_stations)
+weather <- meteo_tidy_ghcnd(stationid ="SPE00120620", keep_flags = FALSE, var = "all", date_min = lat_lon_df$min, date_max = lat_lon_df$max)
+View(weather)
 
 ```
 
