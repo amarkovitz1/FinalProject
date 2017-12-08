@@ -18,6 +18,7 @@ This dataset was downloaded from https://www.kaggle.com/zynicide/wine-reviews on
 ##Load packages
 library(stringr)
 library(dplyr)
+library(plyr)
 
 
 ##Read in the dataset
@@ -53,8 +54,6 @@ table(wine$year)
 wine %>% filter(is.na(wine$year))
 ###There are 4,662 missing vintage
 
-table(wine$country)
-
 ```
 
 ### Identifying the Region
@@ -84,6 +83,17 @@ if(!require(sp)){
     library(sp)
 }
 
+if(!require(countrycode)){
+    install.packages("countrycode")
+    library(countrycode)
+}
+
+
+if(!require(geonames)){
+    install.packages("geonames")
+    library(geonames)
+}
+
 ##from the wines dataset, select unique values of the region variable
 
 regions <- as.data.frame(as.character(unique(wine$region_1)))
@@ -94,22 +104,8 @@ regions <- regions %>% filter(is.na(region_1)==FALSE & region_1!="")
 head(wine)
 dim(regions)
 
-###TEMP: use a temp dataset with fewer rows to test the code
-
-# regionstest <- as.data.frame(c("Douro", "Etna", "Willamette Valley"))
-# colnames(regionstest) <- c("regions")
-
-##Add the latitude, longitude, and address from the geonames package
-# for(i in 1:nrow(regions)){
-#   charregion[i] <- as.character(regions[i,])
-#   result <- geocode(charregion[i], output = "latlona", source = "google")
-#   regions$longitude[i] <- as.numeric(result[1])
-#   regions$latitude[i] <- as.numeric(result[2])
-#   regions$geoAddress[i] <- as.character(result[3])
-# }
-
-
-##NOTE: Don't run this code unless you need to recreate the table of coordinates. Google have limits 
+##Geocode the regions
+##NOTE: Don't run this code unless you need to recreate the table of coordinates. Google have limits for the number of queries. I ran this once and saved it as an R file
 empty = as.data.frame(matrix(rep(NA,3), ncol = 3))
 colnames(empty) = c("longitude", "latitude", "address")
 
@@ -126,12 +122,11 @@ geo = sapply(1:nrow(regions), function(x){
 
 geo = t(geo) %>% as.data.frame() %>% mutate(region_1 = regions$region_1)
 
+load(file="geo.RData")
 
+##Now check whether this geocoding worked by seeing if these addresses match the country in the wines dataset
 
-
-## Join those latitude and longitude coordinates to a country ID to check that
-## the geocoding worked (function sourced from https://stackoverflow.com/questions/14334970/convert-latitude-and-longitude-coordinates-to-country-name-in-r)
-
+## Step 1: Join those latitude and longitude coordinates to a country ID (function sourced from https://stackoverflow.com/questions/14334970/convert-latitude-and-longitude-coordinates-to-country-name-in-r)
 
 coords2country = function(points)
 {  
@@ -150,30 +145,15 @@ coords2country = function(points)
 ##Feed this function a dataset called "points" with the long and lat as the 2 
 ##columns
 
-geo <- geo %>% filter(is.na(longitude)==FALSE) ##filter unmatched
-
+geo <- geo %>% filter(is.na(longitude)==FALSE) %>% ##filter unmatched rows
+  mutate(longitude=as.numeric(longitude), latitude=as.numeric(latitude))
+  
 points <- geo %>%  select(longitude, latitude)
 
-regions$country <- coords2country(points)
+geo$countryISO3 <- coords2country(points)
+ head(geo)
 
-head(regions)
-
-```
-
-```{r}
-##I was playing with this code before finding ggmaps, not sure if it will be useful in the future
-
-##Load packages 
-if(!require(countrycode)){
-    install.packages("countrycode")
-    library(countrycode)
-}
-
-
-if(!require(geonames)){
-    install.packages("geonames")
-    library(geonames)
-}
+##Step 2: get a country code for the rows in the wines dataset
 
 ##Set options for the geonames package
 ###Set username (I created a profile on the website http://www.geonames.org/)
@@ -184,10 +164,21 @@ options(geonamesHost="api.geonames.org")
 source(system.file("tests","testing.R",package="geonames"),echo=TRUE)
 
 
-##Add a column with the three character country code (or some other country ID, we just need a standardized way to be able to match the countries in this wine dataset to other data sources)
-wine$countryiso3c <- countrycode(ifelse(wine$country=="England", "United Kingdom", as.character(wine$country)), 'country.name', 'iso3c') 
+##Add a column with the three character country code
+wine$countryISO3 <- countrycode(ifelse(wine$country=="England", "United Kingdom", as.character(wine$country)), 'country.name', 'iso3c') 
 
-##Use the geonames package to match the "province" variable to something meaningful like coordinates (perhaps using the wikipedia search function in geonames)
+##Step 3: Join on the lat and long coordinates by region name and check that the countries match
+
+wine <- left_join(wine, geo, by="region_1")
+
+unmatched <- wine %>% filter(is.na(longitude)==TRUE | countryISO3.x!=countryISO3.y)
+
+nrow(wine)
+nrow(unmatched)
+
+head(unmatched)
+
+##Now for all the unmatched, try to match to coordinates based on province instead
 
 ```
 
