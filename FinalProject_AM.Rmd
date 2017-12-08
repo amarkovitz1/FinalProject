@@ -250,6 +250,15 @@ wine_v3 <- wine_v3 %>%
 
 head(wine_v3)
 
+?get
+
+return(get(wine_v3[1,]$province))
+
+
+
+
+
+
 ```
 
 
