@@ -12,7 +12,7 @@ stationid <- matrix(nrow = nrow(lat_lon_dfinput), ncol = 1)
 
 for(i in 1:nrow(lat_lon_dfinput)){
   newlist <- as.data.frame(meteo_nearby_stations(lat_lon_df = lat_lon_dfinput[i,], station_data = station_data, limit = 1))
-  stationid[i] <- dfnew[,1]
+  stationid[i] <- newlist[,1]
 }
 
 newdf$stationid <- stationid
