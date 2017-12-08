@@ -265,18 +265,28 @@ wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE)
 head(wine_v4, n=100)
 lat_lon_df <- wine_v4 %>% mutate(id=X) %>% select(id, latitude, longitude)
 head(lat_lon_df)
-x = lat_lon_df[1:4,]
 
+#Rosie's help
+lat_lon_dfinput <- data.frame(id = c("lakeMichigan","douroRiver"),
+                              latitude = c(43.45,41.51), 
+                              longitude = c(-87.22,-5.49))
 
-for(i in 1:20){
-  lat_lon_df <- lat_lon_df[i,]
-  nearby_station1 <- data.frame(meteo_nearby_stations(lat_lon_df = lat_lon_df[i,], station_data = station_data, limit=1))
-  nearby_station <- rbind(nearby_station,nearby_station1)
+newdf <- matrix(nrow = nrow(lat_lon_dfinput), ncol=1)
+newdf <- data.frame(newdf)
+newdf$X <- lat_lon_dfinput$id
+
+newdf
+
+stationid <- matrix(nrow = nrow(lat_lon_dfinput), ncol = 1)
+
+for(i in 1:nrow(lat_lon_dfinput)){
+  newlist <- as.data.frame(meteo_nearby_stations(lat_lon_df = lat_lon_dfinput[i,], station_data = station_data, limit = 1))
+  stationid[i] <- dfnew[,1]
 }
 
-nearby_station <- meteo_nearby_stations(lat_lon_df = lat_lon_df, station_data = station_data, limit=1)
-left_join(wine_v4,nearby_station, by="id")
-View(nearby_station)
+newdf$stationid <- stationid
+newdf
+#Rosie end
 
 #getting min and max dates for growing seasons based on hemispheres
 #northern hemisphere: aug-oct harvest season, southern hemisphere: feb-april harvest season
@@ -291,8 +301,6 @@ meteo_tidy_ghcnd(nearby_station$stationid, keep_flags = FALSE, var = c("prcp","t
 
 
 weather <- function(x){
-  df <- data.frame(id=wine_v3$region[x,], latitude=wine_v3$latitude[x,], longitude=wine_v3$longitude)
-  nearby_station <- meteo_nearby_stations(lat_lon_df = lat_lon_df, station_data = station_data, limit=1)
   meteo_tidy_ghcnd(nearby_station$stationid, keep_flags = FALSE, var = c("prcp","tavg"), date_min = min, date_max = max) %>%
   summarize(avgtemp = mean("tavg"), totrain = sum("prcp"))
 }
