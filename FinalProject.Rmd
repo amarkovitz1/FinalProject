@@ -265,12 +265,12 @@ wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE)
 head(wine_v4, n=100)
 lat_lon_df <- wine_v4 %>% mutate(id=X) %>% select(id, latitude, longitude)
 head(lat_lon_df)
-x = lat_lon_df[1,]
+x = lat_lon_df[1:4,]
 
-nearby_station <- NULL
+
 for(i in 1:20){
-  lat_lon_df2 <- lat_lon_df[i,]
-  nearby_station1 <- data.frame(meteo_nearby_stations(lat_lon_df[i,] = lat_lon_df[i,], station_data = station_data, limit=1))
+  lat_lon_df <- lat_lon_df[i,]
+  nearby_station1 <- data.frame(meteo_nearby_stations(lat_lon_df = lat_lon_df[i,], station_data = station_data, limit=1))
   nearby_station <- rbind(nearby_station,nearby_station1)
 }
 
