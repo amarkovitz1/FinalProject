@@ -63,6 +63,7 @@ We will need to know the region in terms of longitude and latitude in order to m
 
 ```{r}
 
+##Installing any packages needed for geocoding
 if(!require(mapproj)){
     install.packages("mapproj")
     library(mapproj)
@@ -73,29 +74,89 @@ if(!require(ggmap)){
     library(ggmap)
 }
 
-head(wine)
-
-regions <- as.character(unique(wine$region_1))
-length(regions)
-regionstest <- as.data.frame(head(regions))
-
-regionstest 
-geo <- matrix()
-for(i in 1:length(t(regionstest))){
-  charregion <- as.character(regionstest[i,])
-  geo[i,] <- geocode(charregion, output = 'latlona')
+if(!require(rworldmap)){
+    install.packages("rworldmap")
+    library(rworldmap)
 }
-geo <- geocode(regionstest$`head(regions)`, output = 'latlona')
 
-##Also output the country so we can check it's the same country...
+if(!require(sp)){
+    install.packages("sp")
+    library(sp)
+}
 
-?geocode
+##from the wines dataset, select unique values of the region variable
 
-geocodeQueryCheck
+regions <- as.data.frame(as.character(unique(wine$region_1)))
+colnames(regions) <- c("region_1")
+regions <- regions %>% filter(is.na(region_1)==FALSE & region_1!="")
+#nrow(regions)
 
-library(ggmap)
-dat <- geocode(c("Douro"), output = 'latlona')
+head(wine)
+dim(regions)
 
+###TEMP: use a temp dataset with fewer rows to test the code
+
+# regionstest <- as.data.frame(c("Douro", "Etna", "Willamette Valley"))
+# colnames(regionstest) <- c("regions")
+
+##Add the latitude, longitude, and address from the geonames package
+# for(i in 1:nrow(regions)){
+#   charregion[i] <- as.character(regions[i,])
+#   result <- geocode(charregion[i], output = "latlona", source = "google")
+#   regions$longitude[i] <- as.numeric(result[1])
+#   regions$latitude[i] <- as.numeric(result[2])
+#   regions$geoAddress[i] <- as.character(result[3])
+# }
+
+
+##NOTE: Don't run this code unless you need to recreate the table of coordinates. Google have limits 
+empty = as.data.frame(matrix(rep(NA,3), ncol = 3))
+colnames(empty) = c("longitude", "latitude", "address")
+
+geo = sapply(1:nrow(regions), function(x){
+  charregion <- as.character(regions[x,])
+  geo_result = tryCatch(geocode(charregion, output = 'latlona'), 
+           error = function(e) {empty}) 
+ if (length(geo_result) !=3)
+ {
+   return(empty)
+ }
+   else(return(geo_result))
+  }) 
+
+geo = t(geo) %>% as.data.frame() %>% mutate(region_1 = regions$region_1)
+
+
+
+
+## Join those latitude and longitude coordinates to a country ID to check that
+## the geocoding worked (function sourced from https://stackoverflow.com/questions/14334970/convert-latitude-and-longitude-coordinates-to-country-name-in-r)
+
+
+coords2country = function(points)
+{  
+  countriesSP <- getMap(resolution='low')
+
+  #setting CRS directly to that from rworldmap
+  pointsSP <- SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))  
+
+  # use 'over' to get indices of the Polygons object containing each point 
+  indices <- over(pointsSP, countriesSP)
+
+  # return the ISO3 names of each country
+  indices$ISO3
+}
+
+##Feed this function a dataset called "points" with the long and lat as the 2 
+##columns
+
+geo <- geo %>% filter(is.na(longitude)==FALSE) ##filter unmatched
+
+points <- geo %>%  select(longitude, latitude)
+
+regions$country <- coords2country(points)
+
+head(regions)
 
 ```
 
