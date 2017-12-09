@@ -18,8 +18,6 @@ This dataset was downloaded from https://www.kaggle.com/zynicide/wine-reviews on
 ##Load packages
 library(stringr)
 library(dplyr)
-library(plyr)
-
 
 ##Read in the dataset
 wine <- read.csv("winemag-data-130k-v2.csv")
@@ -44,8 +42,6 @@ wine %>% filter(year<1990 | year>2017)
 ####From the titles I noticed that sometimes they sometimes have other numbers which 
 ####seem to often be the year the winery opened or sometmes are just part of the name 
 ####of the wine
-
-table(wine$year)
 
 ##It seems like only years from 1985(ish)-2017 are actually vintage years. Here's a ##second try at identifying the year based on this insight.
 validyears <- as.character(seq(1985, 2017, by=1))
@@ -250,15 +246,51 @@ wine_v3 <- wine_v3 %>%
 
 head(wine_v3)
 
-?get
-
-return(get(wine_v3[1,]$province))
-
-
-
-
-
-
 ```
 
+
+
+
+# Getting climate measures by lat/long
+
+
+```{r}
+#install.packages("rnoaa")
+library(rnoaa)
+station_data <- ghcnd_stations()
+
+#install pbapply to add a progress bar the *apply functions
+if(!require(pbapply)){
+    install.packages("pbapply")
+    library(pbapply)
+}
+
+
+#getting station id for closest station based on lat and lon, combining that with wine_v4 dataset
+wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE)
+
+lat_lon_dfinput <- wine_v4 %>% mutate(id=X) %>% select(id, latitude, longitude)
+
+# myfunction <- function(x) {
+#   output <- meteo_nearby_stations(lat_lon_df=lat_lon_dfinput[x,], 
+#                           station_data = station_data, limit = 1)
+#   output[[1]][1] ##lists are so strange! This gives the stationid
+# } 
+# 
+# x <- myfunction(1)
+# x
+
+
+##new code (sapply)
+
+stationids <-  pbsapply(1:nrow(lat_lon_dfinput), function(x) {
+  output <- meteo_nearby_stations(lat_lon_df=lat_lon_dfinput[x,], 
+                          station_data = station_data, limit = 1)
+  output[[1]][1]
+}) %>% t() 
+
+wine_v5 <- wine_v4 %>% mutate(stationid = as.character(stationids[,1]))
+
+head(wine_v5)
+```
 
