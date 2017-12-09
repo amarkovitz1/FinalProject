@@ -294,7 +294,7 @@ lat_lon_dfinput <- wine_v4_set1 %>% mutate(id=X) %>% select(id, latitude, longit
 stationids <-  pbsapply(1:nrow(lat_lon_dfinput), function(x) {
   output <- meteo_nearby_stations(lat_lon_df=lat_lon_dfinput[x,], 
                           station_data = station_data, limit = 1)
-  output[[1]][,1]
+  output[[1]][1]
 }) %>% t() 
 
 wine_v5_set1 <- wine_v4_set1 %>% 
@@ -302,6 +302,9 @@ wine_v5_set1 <- wine_v4_set1 %>%
   select(X, stationid)
 
 save(wine_v5_set1, file="wine_v5_set1.RData")
+
+
+head(wine_v5_set1)
 
 ##rbind together
 ```
