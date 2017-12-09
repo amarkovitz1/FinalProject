@@ -269,8 +269,12 @@ if(!require(pbapply)){
 #getting station id for closest station based on lat and lon, combining that with wine_v4 dataset
 wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE)
 
-lat_lon_dfinput <- wine_v4 %>% mutate(id=X) %>% select(id, latitude, longitude)
+wine_v4_X500 <- wine_v3 %>% filter(X<=500)
 
+lat_lon_dfinput <- wine_v4_X500 %>% mutate(id=X) %>% select(id, latitude, longitude)
+
+
+##Coming up with the function to use in sapply
 # myfunction <- function(x) {
 #   output <- meteo_nearby_stations(lat_lon_df=lat_lon_dfinput[x,], 
 #                           station_data = station_data, limit = 1)
@@ -281,7 +285,7 @@ lat_lon_dfinput <- wine_v4 %>% mutate(id=X) %>% select(id, latitude, longitude)
 # x
 
 
-##new code (sapply)
+##sapply to get station ids (to run this all take 11 hours, run in batches)
 
 stationids <-  pbsapply(1:nrow(lat_lon_dfinput), function(x) {
   output <- meteo_nearby_stations(lat_lon_df=lat_lon_dfinput[x,], 
@@ -289,8 +293,10 @@ stationids <-  pbsapply(1:nrow(lat_lon_dfinput), function(x) {
   output[[1]][1]
 }) %>% t() 
 
-wine_v5 <- wine_v4 %>% mutate(stationid = as.character(stationids[,1]))
+wine_v5_X500 <- wine_v4_X500 %>% 
+  mutate(stationid = as.character(stationids[,1])) %>%
+  select(X, stationid)
 
-head(wine_v5)
+save(wine_v5_X500, file="wine_v5_X500.RData")
 ```
 
