@@ -265,13 +265,17 @@ if(!require(pbapply)){
     library(pbapply)
 }
 
+##Restrict to just red wines and ones with coordinates (otherwise, the dataset is too large)
+
+redwines <- c("Zinfandel", "Merlot", "Malbec", "Syrah", "Shiraz", "Sangiovese", "Cabernet Sauvignon", "Pinot Noir", "Barbera", "Aglianico", "Tinto Fino", "Tinta de Toro", "Tempranillo Blend", "Tempranillo", "Tannat", "Sangiovese", "Sangiovese Grosso", "Red Blend", "Rhône-style Red Blend", "Primitivo", "Portuguese Red", "Petite Sirah", "Petit Verdot", "Nero d'Avola", "Nerello Mascalese", "Nebbiolo", "Mourvèdre", "Monastrell", "Meritage", "Menc�a", "Malbec-Merlot", "Grenache", "Garnacha", "Gamay", "Corvina, Rondinella, Molinara", "Carmenère", "Cabernet Franc", "Bordeaux-style Red Blend", "Bonarda", "Barbera", "Aglianico")
+
+wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE & variety %in% redwines)
 
 #getting station id for closest station based on lat and lon, combining that with wine_v4 dataset
-wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE)
 
-wine_v4_X500 <- wine_v3 %>% filter(X<=500)
+wine_v4_set1 <- wine_v4 %>% filter(X<=40000)
 
-lat_lon_dfinput <- wine_v4_X500 %>% mutate(id=X) %>% select(id, latitude, longitude)
+lat_lon_dfinput <- wine_v4_set1 %>% mutate(id=X) %>% select(id, latitude, longitude)
 
 
 ##Coming up with the function to use in sapply
@@ -290,13 +294,15 @@ lat_lon_dfinput <- wine_v4_X500 %>% mutate(id=X) %>% select(id, latitude, longit
 stationids <-  pbsapply(1:nrow(lat_lon_dfinput), function(x) {
   output <- meteo_nearby_stations(lat_lon_df=lat_lon_dfinput[x,], 
                           station_data = station_data, limit = 1)
-  output[[1]][1]
+  output[[1]][,1]
 }) %>% t() 
 
-wine_v5_X500 <- wine_v4_X500 %>% 
+wine_v5_set1 <- wine_v4_set1 %>% 
   mutate(stationid = as.character(stationids[,1])) %>%
   select(X, stationid)
 
-save(wine_v5_X500, file="wine_v5_X500.RData")
+save(wine_v5_set1, file="wine_v5_set1.RData")
+
+##rbind together
 ```
 

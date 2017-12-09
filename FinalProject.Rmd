@@ -261,32 +261,69 @@ station_data <- ghcnd_stations()
 
 
 #getting station id for closest station based on lat and lon, combining that with wine_v4 dataset
-wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE)
-
-wine_v4 <- wine_v4 %>% filter(X<=10)
-
+wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE) %>% filter(X < 100)
 lat_lon_dfinput <- wine_v4 %>% mutate(id=X) %>% select(id, latitude, longitude)
 
-# myfunction <- function(x) {
-#   output <- meteo_nearby_stations(lat_lon_df=lat_lon_dfinput[x,], 
-#                           station_data = station_data, limit = 1)
-#   output[[1]][1] ##lists are so strange! This gives the stationid
-# } 
-# 
-# x <- myfunction(1)
-# x
+#Rosie's help
 
+newdf <- matrix(nrow = nrow(lat_lon_dfinput), ncol=1)
+newdf <- data.frame(newdf)
+newdf$X <- lat_lon_dfinput$id
 
-##new code (sapply)
+stationid <- matrix(nrow = nrow(lat_lon_dfinput), ncol = 1)
 
-stationids <-  sapply(1:nrow(lat_lon_dfinput), function(x) {
-  output <- meteo_nearby_stations(lat_lon_df=lat_lon_dfinput[x,], 
-                          station_data = station_data, limit = 1)
-  output[[1]][1]
-}) %>% t() 
+for(i in 1:nrow(lat_lon_dfinput)){
+  newlist <- as.data.frame(meteo_nearby_stations(lat_lon_df = lat_lon_dfinput[i,], station_data = station_data, limit = 1))
+  stationid[i] <- newlist[,1]
+}
 
-wine_v5 <- wine_v4 %>% mutate(stationid = as.character(stationids[,1]))
+newdf$stationid <- stationid
+newdf <- newdf %>% select(-newdf)
+wine_v4 <- left_join(wine_v4,newdf,by="X")
+View(wine_v4)
 
-head(wine_v5)
+#Rosie end
+
+#getting min and max dates for growing seasons based on hemispheres
+#northern hemisphere: aug-oct harvest season, southern hemisphere: feb-april harvest season
+#website source:  http://winefolly.com/tutorial/start-planning-now-wine-harvest-season/
+minmonth <- ifelse(wine_v4$latitude>0,"08","02")
+wine_v4$min <- as.Date(paste(wine_v4$year, minmonth, "01", sep="-"), "%Y-%m-%d")
+maxmonth <- ifelse(wine_v4$latitude>0,"10","04")
+maxday <- ifelse(wine_v4$latitude>0, "31", "30")
+wine_v4$max <- as.Date(paste(wine_v4$year, maxmonth, maxday ,sep="-"), "%Y-%m-%d")
+
+library(tidyverse)
+#precip is in tenths of mm, tempavg is in tenths of degrees C
+
+summary = sapply(1:10, function(x) {
+   meteo_tidy_ghcnd(wine_v4$stationid[x], 
+                      keep_flags = FALSE, 
+                      var = c("prcp","tavg"), 
+                      date_min = as.character(wine_v4$min[x]), 
+                      date_max = as.character(wine_v4$max[x])) %>% 
+   summarize(avgprcp=mean(prcp/10, na.rm=TRUE),
+             avgtemp=mean(tavg/10, na.rm=TRUE))
+}) %>% t() %>% as.data.frame()
+data.frame(wine_v4,summary)
+dim(summary)
+dim(wine_v4)
+save(wine_v4,file="wine_v4.RData")
+meteo_tidy_ghcnd
+
+#TA's thoughts:
+
+empty = matrix(rep(999,2), nrow = 1)
+f = sapply(1:nrow(wine_v4), function(x) {  tryCatch(meteo_tidy_ghcnd(as.character(wine_v4$stationid[x]), keep_flags = FALSE,                     var = c("prcp","tavg"), date_min = as.character(wine_v4$min[x]), date_max = as.character(wine_v4$max[x])) %>% group_by(id) %>% summarize(avgprcp=mean(prcp/10, na.rm=TRUE), avgtemp=mean(tavg/10, na.rm=TRUE)), error = function(e) empty)  }) %>% t() %>% as.data.frame()
+View(f)
+
+empty = matrix(rep(999,2), nrow = 1)
+f = sapply(1:nrow(wine_v4), function(x) {  
+  tryCatch(meteo_tidy_ghcnd(as.character(wine_v4$stationid[x]), 
+                            keep_flags = FALSE,                     
+                            var = c("prcp","tavg"), 
+                            date_min = as.character(wine_v4$min[x]),                     
+                            date_max = as.character(wine_v4$max[x])) %>%  summarize(avgprcp=mean(prcp/10, na.rm=TRUE),                                                                            avgtemp=mean(tavg/10, na.rm=TRUE)), error = function(e) {empty})  
+  }) %>% t() %>% as.data.frame()
 ```
 
