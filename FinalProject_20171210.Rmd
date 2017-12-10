@@ -1,0 +1,352 @@
+---
+title: "Final Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Cleaning
+
+This dataset was downloaded from https://www.kaggle.com/zynicide/wine-reviews on 11/28/2017. It was scraped from WineEnthusiast on November 22nd, 2017
+
+### Identifying the Vintage Year
+
+```{r, warning=FALSE}
+
+##Load packages
+library(stringr)
+library(dplyr)
+
+##Read in the dataset
+wine <- read.csv("winemag-data-130k-v2.csv")
+
+##Identify the wine vintage from the wine title
+pattern <- "\\d\\d\\d\\d" #for the 4 digits that represent year
+x <- str_detect(wine$title, pattern) #just for my own practice so I could look at x and find out how much missing data there were 
+length(wine$X) - sum(x) #4609 wines lack year
+#if you look in the environment window under this dataset, it shows title as a factor with 118840 levels -- I am not sure where that number 118840 comes from, as each of these should be unique, right?
+
+wine$year <- str_extract(wine$title, pattern) ##Amanda note: by adding the "wine$.." in front it joins the year column to the wine dataset, saving you the work you had below of left joining
+
+##look at the fields for wines that are missing year to make sure there isn't other 
+##information we could use
+missing <- wine %>% filter(str_detect(title, pattern)!=1)
+# head(missing, n=100)
+####I didn't notice any years here, but I did notice they were mostly 
+####sparkling/champange wines that were missing year, which we will probably want to ####exclude anyway
+
+##Are there any values that seem unusual?
+wine %>% filter(year<1990 | year>2017)
+####From the titles I noticed that sometimes they sometimes have other numbers which 
+####seem to often be the year the winery opened or sometmes are just part of the name 
+####of the wine
+
+##It seems like only years from 1985(ish)-2017 are actually vintage years. Here's a ##second try at identifying the year based on this insight.
+validyears <- as.character(seq(1985, 2017, by=1))
+wine$year <- str_extract(wine$title, paste(validyears, collapse="|"))
+# table(wine$year)
+wine %>% filter(is.na(wine$year))
+###There are 4,662 missing vintage
+
+```
+
+### Geocoding the wine region
+
+We will need to know the region in terms of longitude and latitude in order to map this information and link to external data sources with weather information. The geonames package seems to be the best free datasource out there with this type of information.
+
+```{r}
+
+##Installing any packages needed for geocoding
+if(!require(mapproj)){
+    install.packages("mapproj")
+    library(mapproj)
+}
+
+if(!require(ggmap)){
+    install.packages("ggmap")
+    library(ggmap)
+}
+
+if(!require(rworldmap)){
+    install.packages("rworldmap")
+    library(rworldmap)
+}
+
+if(!require(sp)){
+    install.packages("sp")
+    library(sp)
+}
+
+if(!require(countrycode)){
+    install.packages("countrycode")
+    library(countrycode)
+}
+
+if(!require(geonames)){
+    install.packages("geonames")
+    library(geonames)
+}
+
+##from the wines dataset, select unique values of the region variable
+
+regions <- as.data.frame(as.character(unique(wine$region_1)))
+colnames(regions) <- c("region_1")
+regions <- regions %>% filter(is.na(region_1)==FALSE & region_1!="")
+#nrow(regions)
+
+##Geocode the regions
+##NOTE: Don't run this code unless you need to recreate the table of coordinates. Google have limits for the number of queries. I ran this once and saved it as an R file
+# empty = as.data.frame(matrix(rep(NA,3), ncol = 3))
+# colnames(empty) = c("longitude", "latitude", "address")
+# 
+# geo = sapply(1:nrow(regions), function(x){
+#   charregion <- as.character(regions[x,])
+#   geo_result = tryCatch(geocode(charregion, output = 'latlona'), 
+#            error = function(e) {empty}) 
+#  if (length(geo_result) !=3)
+#  {
+#    return(empty)
+#  }
+#    else(return(geo_result))
+#   }) 
+# 
+# geo = t(geo) %>% as.data.frame() %>% mutate(region_1 = regions$region_1)
+# 
+# save(geo, file="geo.RData")
+
+load(file="geo.RData")
+
+##Now check whether this geocoding worked by seeing if these addresses match the country in the wines dataset
+
+## Step 1: Join those latitude and longitude coordinates to a country ID (function sourced from https://stackoverflow.com/questions/14334970/convert-latitude-and-longitude-coordinates-to-country-name-in-r)
+
+coords2country = function(points)
+{  
+  countriesSP <- getMap(resolution='low')
+
+  #setting CRS directly to that from rworldmap
+  pointsSP <- SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))  
+
+  # use 'over' to get indices of the Polygons object containing each point 
+  indices <- over(pointsSP, countriesSP)
+
+  # return the ISO3 names of each country
+  indices$ISO3
+}
+
+##Feed this function a dataset called "points" with the long and lat as the 2 
+##columns
+
+geo <- geo %>% filter(is.na(longitude)==FALSE) %>% ##filter unmatched rows
+  mutate(longitude=as.numeric(longitude), latitude=as.numeric(latitude))
+  
+points <- geo %>%  select(longitude, latitude)
+
+geo$countryISO3 <- coords2country(points)
+
+##Step 2: get a country code for the rows in the wines dataset
+
+##Set options for the geonames package
+###Set username (I created a profile on the website http://www.geonames.org/)
+options(geonamesUsername="bi0260finalproject")
+###Set api
+options(geonamesHost="api.geonames.org")
+###check that connection is working (some samples should pop up)
+#source(system.file("tests","testing.R",package="geonames"),echo=TRUE)
+
+
+##Add a column with the three character country code
+wine$countryISO3 <- countrycode(ifelse(wine$country=="England", "United Kingdom", as.character(wine$country)), 'country.name', 'iso3c') 
+
+##Step 3: Join on the lat and long coordinates by region name and check that the countries match
+
+wine_v2 <- left_join(wine, geo, by="region_1")
+
+unmatched <- wine_v2 %>% 
+  filter(is.na(longitude)==TRUE | countryISO3.x!=countryISO3.y)
+
+nrow(wine_v2)
+nrow(unmatched)
+
+##Fix the latitude and longitude fields to be NA when the countries don't match
+wine_v2 <- wine_v2 %>% 
+  mutate(longitude=ifelse(countryISO3.x==countryISO3.y, longitude, NA)) %>%
+  mutate(latitude=ifelse(countryISO3.x==countryISO3.y, latitude, NA))
+
+##Now for all the unmatched, try to match to coordinates based on province instead
+
+provinces <- as.data.frame(as.character(unique(unmatched$province)))
+colnames(provinces) <- c("province")
+provinces <- provinces %>% filter(is.na(province)==FALSE & province!="")
+nrow(provinces)
+
+##Geocode the regions
+##NOTE: Don't run this code unless you need to recreate the table of coordinates. Google have limits for the number of queries. We ran this once and saved it as an R file
+# empty = as.data.frame(matrix(rep(NA,3), ncol = 3))
+# colnames(empty) = c("longitude", "latitude", "address")
+# 
+# geo2 = sapply(1:nrow(provinces), function(x){
+#   charprovince <- as.character(provinces[x,])
+#   geo_result = tryCatch(geocode(charprovince, output = 'latlona'), 
+#            error = function(e) {empty}) 
+#  if (length(geo_result) !=3)
+#  {
+#    return(empty)
+#  }
+#    else(return(geo_result))
+#   }) 
+# 
+# geo2 = t(geo2) %>% as.data.frame() %>% mutate(province = provinces$province)
+# 
+# save(geo2, file="geo2.RData")
+
+load(file="geo2.RData")
+
+##Now check whether this geocoding worked by seeing if these addresses match the country in the wines dataset
+
+## Step 1: Join those latitude and longitude coordinates to a country ID function 
+##Feed the function above into a dataset called "points" with the long and lat as the 2 columns
+
+geo2 <- geo2 %>% filter(is.na(lon)==FALSE) %>% ##filter unmatched rows
+  mutate(longitude=as.numeric(lon), latitude=as.numeric(lat))
+  
+points2 <- geo2 %>%  select(longitude, latitude)
+
+geo2$countryISO3.z <- coords2country(points2)
+ head(geo2)
+
+##Step 2: Join on the lat and long coordinates by province name and check that the countries match
+
+wine_v3 <- left_join(wine_v2, geo2, by="province")
+
+unmatched2 <- wine_v3 %>% 
+  mutate(longitude=ifelse(is.na(longitude.x)==FALSE,longitude.x, longitude.y )) %>%
+  mutate(latitude=ifelse(is.na(latitude.x)==FALSE,latitude.x, latitude.y )) %>%
+  filter(is.na(longitude)==TRUE | countryISO3.x!=countryISO3.z)
+
+# nrow(wine_v3)
+# nrow(unmatched2)
+##We ssucessfully matched 71% 
+
+wine_v3 <- wine_v3 %>% 
+  mutate(longitude=ifelse(is.na(longitude.x)==TRUE &
+                            countryISO3.x==countryISO3.z,
+                          longitude.y, 
+                          longitude.x)) %>%
+  mutate(latitude=ifelse(is.na(latitude.x)==TRUE &
+                            countryISO3.x==countryISO3.z,
+                          latitude.y, 
+                          latitude.x)) %>%
+  select(X, country, designation, points, price, province, region_1, region_2, taster_name, title, variety, winery, year, countryISO3.x, longitude, latitude)
+
+```
+
+
+### Linking to Climate Data
+
+We used the National Ocean and Atmospheric Association's climate data (https://www.ncdc.noaa.gov/cdo-web/webservices/v2). There is an R package called rnoaa which is a client for this dataset. 
+
+
+```{r}
+#install.packages("rnoaa")
+library(rnoaa)
+station_data <- ghcnd_stations()
+
+#install pbapply to add a progress bar to the *apply functions and check their progress (very important when code take many hours to run)
+if(!require(pbapply)){
+    install.packages("pbapply")
+    library(pbapply)
+}
+
+##Restrict to just red wines and ones with coordinates (this helped the dataset be a somewhat more manageable size)
+
+redwines <- c("Zinfandel", "Merlot", "Malbec", "Syrah", "Shiraz", "Sangiovese", "Cabernet Sauvignon", "Pinot Noir", "Barbera", "Aglianico", "Tinto Fino", "Tinta de Toro", "Tempranillo Blend", "Tempranillo", "Tannat", "Sangiovese", "Sangiovese Grosso", "Red Blend", "Rhône-style Red Blend", "Primitivo", "Portuguese Red", "Petite Sirah", "Petit Verdot", "Nero d'Avola", "Nerello Mascalese", "Nebbiolo", "Mourvèdre", "Monastrell", "Meritage", "Menc�a", "Malbec-Merlot", "Grenache", "Garnacha", "Gamay", "Corvina, Rondinella, Molinara", "Carmenère", "Cabernet Franc", "Bordeaux-style Red Blend", "Bonarda", "Barbera", "Aglianico")
+
+wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE & variety %in% redwines)
+
+#Obtain the closest weather station id based on latitude and longitude coordinates
+##NOTE: Don't run this code unless you need to recreate the tables. We ran this code in batches and then rbind'ed them together. In total, this woudl take about 5-10 hours depending on your connection speed.
+# 
+# lat_lon_dfinput <- wine_v4 %>% mutate(id=X) %>% select(id, latitude, longitude)
+# 
+# 
+# stationids <-  pbsapply(1:nrow(lat_lon_dfinput), function(x) {
+#   output <- meteo_nearby_stations(lat_lon_df=lat_lon_dfinput[x,], 
+#                           station_data = station_data, limit = 1)
+#   output[[1]][1]
+# }) %>% t() 
+# 
+# wine_v5 <- wine_v4 %>% 
+#   mutate(stationid = as.character(stationids[1,])) %>%
+#   select(X, stationid)
+# 
+# ##inner join back to the wine_v4
+# 
+# wine_v6 <- inner_join(wine_v4, wine_v5, by="X")
+# 
+# #getting min and max dates for growing seasons based on hemispheres
+# #northern hemisphere: aug-oct harvest season, southern hemisphere: feb-april harvest season
+# #website source:  http://winefolly.com/tutorial/start-planning-now-wine-harvest-season/
+# minmonth <- ifelse(wine_v6$latitude>0,"08","02")
+# wine_v6$min <- as.Date(paste(wine_v6$year, minmonth, "01", sep="-"), "%Y-%m-%d")
+# maxmonth <- ifelse(wine_v6$latitude>0,"10","04")
+# maxday <- ifelse(wine_v6$latitude>0, "31", "30")
+# wine_v6$max <- as.Date(paste(wine_v6$year, maxmonth, maxday ,sep="-"), "%Y-%m-%d")
+# 
+# #Obtain the average precipitation and temperature for this date range and weather station combination.
+# #precip is in tenths of mm, tempavg is in tenths of degrees C
+##NOTE: Don't run this code unless you need to recreate the tables. We ran this code in batches and then rbind'ed them together. In total, this would take about 20 hours- 1.5 days depending on your connection speed.
+# 
+# empty = matrix(rep(999,2), nrow = 1)
+# f = pbsapply(1:nrow(wine_v6), function(x) {
+#   tryCatch(meteo_tidy_ghcnd(as.character(wine_v6$stationid[x]), 
+#                      keep_flags = FALSE, 
+#                      var = c("prcp","tavg"), 
+#                      date_min = as.character(wine_v6$min[x]), 
+#                      date_max = as.character(wine_v6$max[x])) %>% 
+#     # group_by(id) %>%
+#     summarize(avgprcp=mean(prcp/10, na.rm=TRUE),
+#             avgtemp=mean(tavg/10, na.rm=TRUE)), error = function(e) {empty})
+#   }) %>% t() %>% as.data.frame()
+# 
+# wine_v7 <- wine_v6 %>% 
+#   mutate(avgprcp = f$V1, avgtemp = f$V2)
+
+##########################################
+##rbind here....
+
+save(wine_v7, file="wine_v7.RData")
+
+load(file="wine_v7.RData")
+
+
+
+
+```
+
+
+## Data Analysis
+
+Data Analysis for this project included descriptive analyses, data visualizations (including maps), and machine learning.
+
+###Descriptive Analysis
+
+Descriptive analyses include histograms for wine ratings, price, and years in our dataset
+
+```{r}
+head(wine_v4)
+```
+
+###Data Visualization
+
+Data visualizations include average ratings by type of wine (using boxplots), average ratings by country (using maps), average ratings by country and year (using the tile plots in R), and average ratings by type of wine and year (using the tile plots in R). *****when we have weather data, can also add in correlation plots between prec./temp and rating
+
+```{r}
+
+```
+
+
+
+
