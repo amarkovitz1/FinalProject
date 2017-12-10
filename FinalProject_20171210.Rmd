@@ -336,16 +336,251 @@ Data Analysis for this project included descriptive analyses, data visualization
 Descriptive analyses include histograms for wine ratings, price, and years in our dataset
 
 ```{r}
-head(wine_v4)
+library(ggthemes)
+
+##histogram for wine ratings
+p <- wine_v4 %>% 
+  ggplot(aes(points)) + 
+  geom_histogram(binwidth = 1) + 
+  labs(y= "Count", x="Expert Wine Ratings (100 Point Scale)",title="Distribution of Expert Wine Ratings") +
+  theme_economist()
+
+# jpeg(filename="hist_ratings.jpg")
+p
+# dev.off()
+
+summary(wine_v4$points)
+sd(wine_v4$points)
+
+##histogram for wine prices
+p <- wine_v4 %>% 
+  ggplot(aes(price)) + 
+  geom_histogram(binwidth = 0.5) + 
+  labs(y= "Count", x="Wine Price ($ per Bottle)",title="Distribution of Wine Prices") +
+  theme_economist()
+
+p + scale_x_continuous(trans = "sqrt", breaks = c(0, 25, 100, 400, 900, 1600, 2500))
+
+summary(wine_v4$price)
+
+##histogram for years
+p <- wine_v4 %>% 
+  ggplot(aes(as.numeric(year))) + 
+  geom_histogram(binwidth = 1) + 
+  labs(y= "Count", x="Vintage Year",title="Distribution of Vintage Years") +
+  theme_economist()
+
+p + scale_x_continuous(breaks = c(1985, 1990, 1995, 2000, 2005, 2010, 2015))
+
+summary(as.numeric(wine_v4$year))
+
 ```
 
 ###Data Visualization
 
-Data visualizations include average ratings by type of wine (using boxplots), average ratings by country (using maps), average ratings by country and year (using the tile plots in R), and average ratings by type of wine and year (using the tile plots in R). *****when we have weather data, can also add in correlation plots between prec./temp and rating
+Data visualizations include average ratings by type of wine (using boxplots), average rating by price (correlation plot), average ratings by country (using maps), average ratings by country and year (using the tile plots in R), and average ratings by type of wine and year (using the tile plots in R). NOTE (when we have weather data, can also add in correlation plots between prec./temp and rating)
 
 ```{r}
 
+##average ratings by wine type
+
+p <- wine_v4 %>% 
+  mutate(variety = reorder(variety, -points, FUN = median)) %>%
+  ggplot(aes(variety, points)) +
+  geom_boxplot()  +
+  labs(y= "Expert Wine Ratings (100 Point Scale)", x=" ",title="Do Some Wine Varieties Receive Better Expert Ratings?") +
+  theme_economist() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+p
+
+# jpeg(filename="rating_byvariety.jpg", width = 710, height = 480)
+# p
+# dev.off()
+
+
+##rating by price correlaton
+##break this into categories of prices because otherwise the graph is too clumped to see correlations. We can also see from this that price makes a bigger difference in terms of ratings at lower prices and then no difference past $500
+p <- wine_v4 %>% 
+  filter(is.na(price)==FALSE) %>%
+  mutate(pricecat = ifelse(price<100, "< $100 Bottles", ifelse(price<500, "$100-$499.99 Bottles", "\u2265 $500 Bottles"))) %>%
+  mutate(pricecat = reorder(pricecat, price, FUN = median)) %>%
+  ggplot(aes(price, points)) +
+  geom_point()  +
+  facet_grid(. ~ pricecat, scales="free_x") +
+  geom_smooth(method = "lm", size = 1.5) +
+  labs(y= "Expert Wine Ratings (100 Point Scale)", x="Wine Price ($ per Bottle)",title="Are Price and Expert Rating Correlated?") +
+  theme_economist()
+  
+p
+
+# jpeg(filename="rating_byprice.jpg", width = 710, height = 480)
+# p
+# dev.off()
+
+##average ratings by country
+##Use the rworldmap package
+if(!require(rworldmap)){
+    install.packages("rworldmap")
+    library(rworldmap)
+}
+
+###first, aggregate ratings data by country
+dat <- wine_v4 %>% 
+  filter(is.na(points)==FALSE) %>%
+  group_by(countryISO3.x, country) %>%
+  summarize(meanrating = mean(points), meanprice = mean(price))
+
+dat %>% arrange(-meanrating) %>% select(country,countryISO3.x, meanrating)
+
+###then, map these data
+sPDF <- joinCountryData2Map(dat,
+                            joinCode = "ISO3",
+                            nameJoinColumn = "countryISO3.x")
+
+mapDevice() #create world map shaped window
+
+##across the world
+mapCountryData(sPDF,
+               nameColumnToPlot='meanrating',
+               mapTitle='Mean Expert Wine Rating by Country')
+
+##in Europe
+mapCountryData(sPDF,
+               nameColumnToPlot='meanrating',
+               mapTitle='Mean Expert Wine Rating by Country in Europe',
+               mapRegion="europe")
+
+##Mean Prices (not shown in results)
+##across the world
+mapCountryData(sPDF,
+               nameColumnToPlot='meanprice',
+               mapTitle='Mean Wine Price by Country')
+
+##in Europe
+mapCountryData(sPDF,
+               nameColumnToPlot='meanprice',
+               mapTitle='Mean Wine Price by Country in Europe',
+               mapRegion="europe")
+
+
+
+##average ratings by country and year
+if(!require(RColorBrewer)){
+    install.packages("RColorBrewer")
+    library(RColorBrewer)
+}
+
+dat2 <- wine_v4 %>% 
+  filter(is.na(points)==FALSE & is.na(year)==FALSE) %>%
+  group_by(country, year) %>%
+  summarize(meanrating = mean(points), total.count=n()) %>%
+  ungroup()
+
+breaks <- seq(80, 94, by=2)
+dat2$rating_rescale <- cut(dat2$meanrating,breaks = breaks)
+dat2$rating_rescale <- factor(as.character(dat2$rating_rescale),
+levels=rev(levels(dat2$rating_rescale)))
+
+
+p <- dat2 %>% mutate(country = reorder(country, total.count, FUN = max)) %>%
+  ggplot(aes(year, country)) + geom_tile(aes(fill = rating_rescale), colour = "white",size=0.25) + 
+  labs(x="Year",y="",title="Have Country-Specific Wine Preferences Changed Over Time?") +
+  scale_y_discrete(expand=c(0,0)) +
+  theme_economist() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position="right", legend.justification = c("left", "top"), legend.title = element_text(size=14)) +
+  scale_fill_manual(values=rev(brewer.pal(7,"YlOrRd")),na.value="grey90", name="Mean Expert Rating") +
+  guides(fill=guide_legend(ncol=1,bycol=TRUE))
+
+jpeg(filename="ratings_bycountryyear.jpg", width = 710, height = 480)
+p
+dev.off()
+
+##average ratings by variety and year
+
+dat3 <- wine_v4 %>% 
+  filter(is.na(points)==FALSE & is.na(variety)==FALSE & is.na(year)==FALSE) %>%
+  group_by(variety, year) %>%
+  summarize(meanrating = mean(points), total.count=n()) %>%
+  ungroup()
+
+breaks <- seq(80, 94, by=2)
+dat3$rating_rescale <- cut(dat3$meanrating,breaks = breaks)
+dat3$rating_rescale <- factor(as.character(dat3$rating_rescale),
+levels=rev(levels(dat3$rating_rescale)))
+
+
+p <- dat3 %>% mutate(variety = reorder(variety, meanrating, FUN = median)) %>%
+  ggplot(aes(year, variety)) + geom_tile(aes(fill = rating_rescale), colour = "white",size=0.25) + 
+  labs(x="Year",y="",title="Have Wine Variety Preferences Changed Over Time?") +
+  scale_y_discrete(expand=c(0,0)) +
+  theme_economist() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position="right", legend.justification = c("left", "top"), legend.title = element_text(size=14)) +
+  scale_fill_manual(values=rev(brewer.pal(7,"YlOrRd")),na.value="grey90", name="Mean Expert Rating") +
+  guides(fill=guide_legend(ncol=1,bycol=TRUE))
+
+jpeg(filename="ratings_byvarietyyear.jpg", width = 710, height = 480)
+p
+dev.off()
+
+
 ```
+
+###Machine Learning 
+
+We predicted wine ratings based on the other characteristics available in our dataset (including price, longitude, latitude, wine variety, year, precipitation, and temperature) using random forests.
+
+```{r}
+if(!require(randomForest)){
+    install.packages("randomForest")
+    library(randomForest)
+}
+
+if(!require(caret)){
+    install.packages("caret")
+    library(caret)
+}
+
+##step 1: split into a testing and training dataset
+library(caret)
+set.seed(658)
+train_index <- createDataPartition(y, times = 1, p = 0.7, list = FALSE)
+
+
+train_set <- heights[train_index, ]
+test_set <- heights[-train_index, ]
+
+#this website is great
+#http://theanalyticalminds.blogspot.com/2015/04/part-4a-modelling-predicting-amount-of.html
+
+
+
+##simple code (start with few trees)
+fit <- randomForest(points ~ price + longitude + latitude + as.factor(variety) + as.factor(winery) + as.numeric(year), #add precip and temp
+                      data=wine_v4, 
+                      importance=TRUE, 
+                      ntree=500)
+
+##plot fit to see how it improves with each tree (how many trees should I make?)
+plot(fit)
+
+##plot the variable importance
+varImpPlot(cross.sell.rf,
+           sort = T,
+           main="Variable Importance",
+           n.var=5)
+
+
+##suggestions:
+# Try setting the nodesize = 25 and tree = 50 and see if you are able to at least build one RF and then plot the oob.error vs no. of trees and gradually increase the no. of trees. For plotting & adding additional trees to an exisiting forest, refer to r RF documentation,
+
+##calculate the RMSE
+
+##Plot the actual vs predicted values in the 
+
+
+```
+
 
 
 
