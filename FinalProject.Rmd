@@ -256,6 +256,7 @@ head(wine_v3)
 
 ```{r}
 #install.packages("rnoaa")
+library(tidyverse)
 library(rnoaa)
 station_data <- ghcnd_stations()
 
@@ -287,43 +288,66 @@ View(wine_v4)
 #getting min and max dates for growing seasons based on hemispheres
 #northern hemisphere: aug-oct harvest season, southern hemisphere: feb-april harvest season
 #website source:  http://winefolly.com/tutorial/start-planning-now-wine-harvest-season/
-minmonth <- ifelse(wine_v4$latitude>0,"08","02")
-wine_v4$min <- as.Date(paste(wine_v4$year, minmonth, "01", sep="-"), "%Y-%m-%d")
-maxmonth <- ifelse(wine_v4$latitude>0,"10","04")
-maxday <- ifelse(wine_v4$latitude>0, "31", "30")
-wine_v4$max <- as.Date(paste(wine_v4$year, maxmonth, maxday ,sep="-"), "%Y-%m-%d")
 
-library(tidyverse)
+wine_v5_combined <- rbind(wine_v5_set1,
+                          wine_v5_set2,
+                          wine_v5_set3,
+                          wine_v5_set4,
+                          wine_v5_set5,
+                          wine_v5_set6,
+                          wine_v5_set7,
+                          wine_v5_set8,
+                          wine_v5_set9)
+
+##rbind in other sets... for now testing with one
+wine_v5 <- inner_join(wine_v4, wine_v5_combined, by="X")
+
+nrow(wine_v5)
+
+minmonth <- ifelse(wine_v5$latitude>0,"08","02")
+wine_v5$min <- as.Date(paste(wine_v5$year, minmonth, "01", sep="-"), "%Y-%m-%d")
+maxmonth <- ifelse(wine_v5$latitude>0,"10","04")
+maxday <- ifelse(wine_v5$latitude>0, "31", "30")
+wine_v5$max <- as.Date(paste(wine_v5$year, maxmonth, maxday ,sep="-"), "%Y-%m-%d")
+
+
 #precip is in tenths of mm, tempavg is in tenths of degrees C
 
-summary = sapply(1:10, function(x) {
-   meteo_tidy_ghcnd(wine_v4$stationid[x], 
-                      keep_flags = FALSE, 
-                      var = c("prcp","tavg"), 
-                      date_min = as.character(wine_v4$min[x]), 
-                      date_max = as.character(wine_v4$max[x])) %>% 
-   summarize(avgprcp=mean(prcp/10, na.rm=TRUE),
-             avgtemp=mean(tavg/10, na.rm=TRUE))
-}) %>% t() %>% as.data.frame()
-data.frame(wine_v4,summary)
-dim(summary)
-dim(wine_v4)
-save(wine_v4,file="wine_v4.RData")
-meteo_tidy_ghcnd
+# summary = sapply(1:10, function(x) {
+#    meteo_tidy_ghcnd(wine_v4$stationid[x], 
+#                       keep_flags = FALSE, 
+#                       var = c("prcp","tavg"), 
+#                       date_min = as.character(wine_v4$min[x]), 
+#                       date_max = as.character(wine_v4$max[x])) %>% 
+#    summarize(avgprcp=mean(prcp/10, na.rm=TRUE),
+#              avgtemp=mean(tavg/10, na.rm=TRUE))
+# }) %>% t() %>% as.data.frame()
+# data.frame(wine_v4,summary)
+# dim(summary)
+# dim(wine_v4)
+# save(wine_v4,file="wine_v4.RData")
+# meteo_tidy_ghcnd
 
 #TA's thoughts:
 
-empty = matrix(rep(999,2), nrow = 1)
-f = sapply(1:nrow(wine_v4), function(x) {  tryCatch(meteo_tidy_ghcnd(as.character(wine_v4$stationid[x]), keep_flags = FALSE,                     var = c("prcp","tavg"), date_min = as.character(wine_v4$min[x]), date_max = as.character(wine_v4$max[x])) %>% group_by(id) %>% summarize(avgprcp=mean(prcp/10, na.rm=TRUE), avgtemp=mean(tavg/10, na.rm=TRUE)), error = function(e) empty)  }) %>% t() %>% as.data.frame()
-View(f)
+# empty = matrix(rep(999,2), nrow = 1)
+# f = sapply(1:nrow(wine_v4), function(x) {  tryCatch(meteo_tidy_ghcnd(as.character(wine_v4$stationid[x]), keep_flags = FALSE,                     var = c("prcp","tavg"), date_min = as.character(wine_v4$min[x]), date_max = as.character(wine_v4$max[x])) %>% group_by(id) %>% summarize(avgprcp=mean(prcp/10, na.rm=TRUE), avgtemp=mean(tavg/10, na.rm=TRUE)), error = function(e) empty)  }) %>% t() %>% as.data.frame()
+# View(f)
 
-empty = matrix(rep(999,2), nrow = 1)
-f = sapply(1:nrow(wine_v4), function(x) {  
-  tryCatch(meteo_tidy_ghcnd(as.character(wine_v4$stationid[x]), 
+
+
+empty <- matrix(rep(999,2), nrow = 1)
+weather <- pbsapply(1:nrow(wine_v5), function(x) {  
+  tryCatch(meteo_tidy_ghcnd(as.character(wine_v5$stationid[x]), 
                             keep_flags = FALSE,                     
                             var = c("prcp","tavg"), 
-                            date_min = as.character(wine_v4$min[x]),                     
-                            date_max = as.character(wine_v4$max[x])) %>%  summarize(avgprcp=mean(prcp/10, na.rm=TRUE),                                                                            avgtemp=mean(tavg/10, na.rm=TRUE)), error = function(e) {empty})  
+                            date_min = as.character(wine_v5$min[x]),                
+                            date_max = as.character(wine_v5$max[x])) %>% 
+             summarize(avgprcp=mean(prcp/10, na.rm=TRUE),
+                       avgtemp=mean(tavg/10, na.rm=TRUE)), 
+           error = function(e) {empty})  
   }) %>% t() %>% as.data.frame()
+
+
 ```
 

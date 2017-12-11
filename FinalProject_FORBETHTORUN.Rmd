@@ -273,9 +273,11 @@ wine_v4 <- wine_v3 %>% filter(is.na(longitude) == FALSE & variety %in% redwines)
 
 #getting station id for closest station based on lat and lon, combining that with wine_v4 dataset
 
-wine_v4_set9 <- wine_v4 %>% filter(X<10)
+nrow(wine_v4)
 
-lat_lon_dfinput <- wine_v4_set9 %>% mutate(id=X) %>% select(id, latitude, longitude)
+wine_v4_newset1 <- wine_v4 %>% filter(X<=65000)
+
+lat_lon_dfinput <- wine_v4_newset1 %>% mutate(id=X) %>% select(id, latitude, longitude)
 
 nrow(lat_lon_dfinput)
 
@@ -298,27 +300,46 @@ stationids <-  pbsapply(1:nrow(lat_lon_dfinput), function(x) {
   output[[1]][1]
 }) %>% t() 
 
-wine_v5_set9 <- wine_v4_set9 %>% 
+wine_v5_newset1 <- wine_v4_newset1 %>% 
   mutate(stationid = as.character(stationids[1,])) %>%
   select(X, stationid)
 
-View(wine_v5_set9)
+save(wine_v5_newset1, file="wine_v5_newset1.RData")
 
-save(wine_v5_set9, file="wine_v5_set9.RData")
+##inner join back to the wine_v4
 
-load(file="wine_v5_set1.RData")
-load(file="wine_v5_set2.RData")
-load(file="wine_v5_set3.RData")
-load(file="wine_v5_set4.RData")
-load(file="wine_v5_set5.RData")
-load(file="wine_v5_set6.RData")
-load(file="wine_v5_set7.RData")
-load(file="wine_v5_set8.RData")
-load(file="wine_v5_set9.RData")
+wine_v6_newset1 <- inner_join(wine_v4, wine_v5_newset1, by="X")
+
+#getting min and max dates for growing seasons based on hemispheres
+#northern hemisphere: aug-oct harvest season, southern hemisphere: feb-april harvest season
+#website source:  http://winefolly.com/tutorial/start-planning-now-wine-harvest-season/
+minmonth <- ifelse(wine_v6_newset1$latitude>0,"08","02")
+wine_v6_newset1$min <- as.Date(paste(wine_v6_newset1$year, minmonth, "01", sep="-"), "%Y-%m-%d")
+maxmonth <- ifelse(wine_v6_newset1$latitude>0,"10","04")
+maxday <- ifelse(wine_v6_newset1$latitude>0, "31", "30")
+wine_v6_newset1$max <- as.Date(paste(wine_v6_newset1$year, maxmonth, maxday ,sep="-"), "%Y-%m-%d")
 
 
- 
+#precip is in tenths of mm, tempavg is in tenths of degrees C
 
-##rbind together
+empty = matrix(rep(999,2), nrow = 1)
+f = pbsapply(1:nrow(wine_v6_newset1), function(x) {
+  tryCatch(meteo_tidy_ghcnd(as.character(wine_v6_newset1$stationid[x]), 
+                     keep_flags = FALSE, 
+                     var = c("prcp","tavg"), 
+                     date_min = as.character(wine_v6_newset1$min[x]), 
+                     date_max = as.character(wine_v6_newset1$max[x])) %>% 
+    # group_by(id) %>%
+    summarize(avgprcp=mean(prcp/10, na.rm=TRUE),
+            avgtemp=mean(tavg/10, na.rm=TRUE)), error = function(e) {empty})
+  }) %>% t() %>% as.data.frame()
+
+wine_v7_newset1 <- wine_v6_newset1 %>% 
+  mutate(avgprcp = f$V1, avgtemp = f$V2)
+
+View(wine_v7_newset1)
+save(wine_v7_newset1, file="wine_v7_newset1.RData")
+
+
 ```
 
